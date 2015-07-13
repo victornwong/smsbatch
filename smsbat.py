@@ -46,12 +46,12 @@ class SMSGatewaySettingDialog(wx.Dialog):
 	def InitUI(self):
 		pnl = wx.Panel(self)
 
+		self.gwurl = wx.TextCtrl(pnl, size=(140,-1))
 		self.gwuname = wx.TextCtrl(pnl, size=(140,-1))
 		self.gwpaswd = wx.TextCtrl(pnl, size=(140,-1))
 
-		self.gwuname.Enable(True)
-
 		try:
+			self.gwurl.SetValue(mconfig.get(CONFIG_SECTION,"url"))
 			self.gwuname.SetValue(mconfig.get(CONFIG_SECTION,"username"))
 			self.gwpaswd.SetValue(mconfig.get(CONFIG_SECTION,"password"))
 		except Exception, e:
@@ -60,12 +60,14 @@ class SMSGatewaySettingDialog(wx.Dialog):
 		button = wx.Button(pnl, label="Save")
 		button.Bind(wx.EVT_BUTTON, self.SaveGWSetting)
 
-		gsizer = wx.GridBagSizer(3,2)
-		gsizer.Add(wx.StaticText(pnl,label="GW username"),(0,0))
-		gsizer.Add(self.gwuname,(0,1))
-		gsizer.Add(wx.StaticText(pnl,label="GW password"),(1,0))
-		gsizer.Add(self.gwpaswd,(1,1))
-		gsizer.Add(button,(2,0),(2,2),flag=wx.EXPAND)
+		gsizer = wx.GridBagSizer(4,2)
+		gsizer.Add(wx.StaticText(pnl,label="GW URL"),(0,0))
+		gsizer.Add(self.gwurl,(0,1))
+		gsizer.Add(wx.StaticText(pnl,label="GW username"),(1,0))
+		gsizer.Add(self.gwuname,(1,1))
+		gsizer.Add(wx.StaticText(pnl,label="GW password"),(2,0))
+		gsizer.Add(self.gwpaswd,(2,1))
+		gsizer.Add(button,(3,0),(3,2),flag=wx.EXPAND)
 		
 		border = wx.BoxSizer()
 		border.Add(gsizer,1,wx.ALL | wx.EXPAND, 10)
@@ -78,6 +80,7 @@ class SMSGatewaySettingDialog(wx.Dialog):
 
 	def SaveGWSetting(self,e):
 		fo = open(CONFIG_FILENAME,"w")
+		mconfig.set(CONFIG_SECTION, "url", self.gwurl.GetValue().strip())
 		mconfig.set(CONFIG_SECTION, "username", self.gwuname.GetValue().strip())
 		mconfig.set(CONFIG_SECTION, "password", self.gwpaswd.GetValue().strip())
 		mconfig.write(fo)
