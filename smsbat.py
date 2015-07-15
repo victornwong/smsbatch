@@ -177,9 +177,9 @@ class MainWindow(wx.Frame):
 
 		#st1 = wx.StaticText(panel,label="Worksheet",style=wx.ALIGN_LEFT)
 
-		btnid = ["sendallsms","resendsms","clearworksheet","uploadworksheet","deleteentry","saveworksheet"]
-		btnlabel = ["Send SMS", "Resend SMS", "Clear worksheet", "Upload worksheet", "Delete entry","Save worksheet"]
-		btnfunc = [self.StartSendSMS, self.ResendSMS, self.ClearWorksheet, self.OnUploadworksheet, self.DeleteEntry, self.SaveWorksheet]
+		btnid = ["sendallsms","resendsms","clearworksheet","uploadworksheet","deleteentry","saveworksheet","newentry"]
+		btnlabel = ["Send SMS", "Resend SMS", "Clear worksheet", "Upload worksheet", "Delete entry","Save worksheet","New entry"]
+		btnfunc = [self.StartSendSMS, self.ResendSMS, self.ClearWorksheet, self.OnUploadworksheet, self.DeleteEntry, self.SaveWorksheet, self.NewEntry]
 		self.btns = {}
 
 		for i in range(len(btnid)):
@@ -195,24 +195,27 @@ class MainWindow(wx.Frame):
 		vbox = wx.BoxSizer(wx.VERTICAL)
 
 		hbox = wx.BoxSizer(wx.HORIZONTAL)
-		hbox.Add(self.btns["uploadworksheet"],0,wx.ALL,5)
-		hbox.Add(self.btns["sendallsms"],0,wx.ALL,5)
-		hbox.Add(self.btns["resendsms"],0,wx.ALL,5)
+		hbox.Add(self.btns["uploadworksheet"],0,wx.ALL,3)
+		hbox.Add(self.btns["sendallsms"],0,wx.ALL,3)
+		hbox.Add(self.btns["resendsms"],0,wx.ALL,3)
 		self.btns["resendsms"].Show(False)
 		
 		hbox2 = wx.BoxSizer(wx.HORIZONTAL)
-		hbox2.Add(self.btns["saveworksheet"],0,wx.ALL,5)
-		hbox2.Add(self.btns["deleteentry"],0,wx.ALL,5)
-		hbox2.Add(self.btns["clearworksheet"],0,wx.ALL,5)
+		hbox2.Add(self.btns["saveworksheet"],0,wx.ALL,3)
+		hbox2.Add(self.btns["newentry"],0,wx.ALL,3)
+		hbox2.Add(self.btns["deleteentry"],0,wx.ALL,3)
+		hbox2.Add(self.btns["clearworksheet"],0,wx.ALL,3)
 
-		self.logbox = wx.TextCtrl(panel, size=(-1, 150), style = wx.TE_MULTILINE|wx.TE_READONLY|wx.TE_AUTO_URL)
+		#self.logbox = wx.TextCtrl(panel, size=(-1, 150), style = wx.TE_MULTILINE|wx.TE_READONLY|wx.TE_AUTO_URL)
+		self.logbox = wx.TextCtrl(panel, size=(-1, -1), style = wx.TE_MULTILINE|wx.TE_READONLY|wx.TE_AUTO_URL)
 
 		vbox.Add(hbox,0,wx.ALL|wx.EXPAND,2)
 		vbox.Add(self.list_ctrl,0,wx.ALL|wx.EXPAND,2)
 		vbox.Add(hbox2,0,wx.ALL|wx.EXPAND,2)
-		vbox.Add(self.logbox,0,wx.ALL|wx.EXPAND,2)
+		#vbox.Add(self.logbox,1,wx.ALL|wx.EXPAND,2)
+		vbox.Add(self.logbox,1,wx.EXPAND)
 
-		panel.SetSizer(vbox)
+		panel.SetSizerAndFit(vbox)
 
 		self.SetSize((800, 600))
 		self.SetTitle(PROGRAM_TITLE + " " + PROGRAM_VERSION)
@@ -239,20 +242,22 @@ class MainWindow(wx.Frame):
 		sqlstm = "begin;"
 
 		for ki in mainlist:
-			if iwhat == True:
+			if ki[0] == "0": # if rec no. is 0, do new insert into db
 				sqlstm += "insert into smsr (origid,voucherno,customer,phone,message,sent,resend,nosend) values (NULL,'" + ki[1] + "','" + ki[2] + "','" + ki[3] + "','" + ki[4] + "','" + ki[5] + "','" + ki[6] + "',0);"
-			else:
+			else: # just update by rec no.
 				sqlstm += "update smsr set voucherno='" + ki[1] + "', customer='" + ki[2] + "', phone='" + ki[3] + "', message='" + ki[4] + "', sent='" + ki[5] + "', resend='" + ki[6] + "',nosend=" + ki[7] + " where origid=" + ki[0] + ";"
 
 		sqlstm += "end;"
 		dbExecuter(sqlstm)
 
-		if iwhat == True: # reload worksheet when recs are inserted into db
-			self.ListRecords(self)
+		self.ListRecords(self) # reload worksheet when recs are inserted into db
 
 	def SaveWorksheet(self,e):
 		self.UpdateListToDatabase(self.newupload)
 		wx.MessageBox("Entries saved..","Info",wx.OK | wx.ICON_INFORMATION)
+
+	def NewEntry(self,e):
+		self.list_ctrl.InsertStringItem(0,"0")
 
 	def DeleteEntry(self,e):
 		kk = get_selected_items(self.list_ctrl)
@@ -296,6 +301,7 @@ class MainWindow(wx.Frame):
 		try:
 			unm = mconfig.get(CONFIG_SECTION,"username")
 			pws = mconfig.get(CONFIG_SECTION,"password")
+			gurl = mconfig.get(CONFIG_SECTION,"url")
 		except Exception, e:
 			wx.MessageBox("ERR: gateway configuration not available","ERROR", wx.OK | wx.ICON_ERROR)
 			return
@@ -389,11 +395,8 @@ class MainWindow(wx.Frame):
 			wkb = xlrd.open_workbook(ifilename)
 			sheets = wkb.sheet_names()
 			index = 0
-			#self.sendsms_btn.Enable()
 			self.newupload = True # will insert records instead of update
 			self.list_ctrl.DeleteAllItems() # delete all list items before inserting
-			#self.btns["sendallsms"].Enabled = True
-			#self.btns["resendsms"].Enabled = False
 
 			# go through every worksheet in the workbook. import 'em rows according to template format
 			for wkn in sheets:
@@ -411,7 +414,7 @@ class MainWindow(wx.Frame):
 						cellval = wks.cell_value(curr_row,curr_cell)
 
 						if curr_cell == 0:
-							self.list_ctrl.InsertStringItem(index,str(index))
+							self.list_ctrl.InsertStringItem(index,"0") # rec no. always 0 for uploaded worksheet - to be used in UpdateListToDatabase for insert
 							self.list_ctrl.SetStringItem(index,2,str(cellval))
 						else:
 							self.list_ctrl.SetStringItem(index,curr_cell+2,str(cellval))
@@ -428,8 +431,6 @@ class MainWindow(wx.Frame):
 		wx.MessageBox(
 			'''
 Worksheet template must be in MS-Excel XP/2003 (xls) format ONLY.
-
-Internal record numbers are auto-increment.
 			'''
 			,
 			"Worksheet template info",wx.OK | wx.ICON_INFORMATION)
