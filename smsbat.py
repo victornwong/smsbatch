@@ -7,7 +7,7 @@ Written by Victor Wong
 Since 03/07/2015
 
 Notes:
-Uses onewaysms API
+Uses onewaysms API Version 1.2 12/03/2013
 
 '''
 import wx,os,xlrd
@@ -29,9 +29,10 @@ MS_COL = 4
 ST_COL = 5
 RS_COL = 6
 TS_COL = 7
+RESP_COL = 8
 
-lheader = ["REC","Voucher","Customer","Phone","Message","Sent","Resend","TS"]
-lhwidth = [70,70,180,80,180,70,70,30]
+lheader = ["REC","Voucher","Customer","Phone","Message","Sent","Resend","TS","Resp"]
+lhwidth = [70,70,180,80,180,70,70,30,50]
 
 mconfig = ConfigParser.SafeConfigParser()
 
@@ -49,11 +50,13 @@ class SMSGatewaySettingDialog(wx.Dialog):
 		self.gwurl = wx.TextCtrl(pnl, size=(140,-1))
 		self.gwuname = wx.TextCtrl(pnl, size=(140,-1))
 		self.gwpaswd = wx.TextCtrl(pnl, size=(140,-1))
+		self.gwport = wx.TextCtrl(pnl, size=(140,-1))
 
 		try:
 			self.gwurl.SetValue(mconfig.get(CONFIG_SECTION,"url"))
 			self.gwuname.SetValue(mconfig.get(CONFIG_SECTION,"username"))
 			self.gwpaswd.SetValue(mconfig.get(CONFIG_SECTION,"password"))
+			self.gwport.SetValue(mconfig.get(CONFIG_SECTION,"port"))
 		except Exception, e:
 			pass
 
@@ -63,11 +66,17 @@ class SMSGatewaySettingDialog(wx.Dialog):
 		gsizer = wx.GridBagSizer(4,2)
 		gsizer.Add(wx.StaticText(pnl,label="GW URL"),(0,0))
 		gsizer.Add(self.gwurl,(0,1))
-		gsizer.Add(wx.StaticText(pnl,label="GW username"),(1,0))
-		gsizer.Add(self.gwuname,(1,1))
-		gsizer.Add(wx.StaticText(pnl,label="GW password"),(2,0))
-		gsizer.Add(self.gwpaswd,(2,1))
-		gsizer.Add(button,(3,0),(3,2),flag=wx.EXPAND)
+
+		gsizer.Add(wx.StaticText(pnl,label="GW port"),(1,0))
+		gsizer.Add(self.gwport,(1,1))
+
+		gsizer.Add(wx.StaticText(pnl,label="GW username"),(2,0))
+		gsizer.Add(self.gwuname,(2,1))
+
+		gsizer.Add(wx.StaticText(pnl,label="GW password"),(3,0))
+		gsizer.Add(self.gwpaswd,(3,1))
+
+		gsizer.Add(button,(4,0),(4,2),flag=wx.EXPAND)
 		
 		border = wx.BoxSizer()
 		border.Add(gsizer,1,wx.ALL | wx.EXPAND, 10)
@@ -83,6 +92,7 @@ class SMSGatewaySettingDialog(wx.Dialog):
 		mconfig.set(CONFIG_SECTION, "url", self.gwurl.GetValue().strip())
 		mconfig.set(CONFIG_SECTION, "username", self.gwuname.GetValue().strip())
 		mconfig.set(CONFIG_SECTION, "password", self.gwpaswd.GetValue().strip())
+		mconfig.set(CONFIG_SECTION, "port", self.gwport.GetValue().strip())
 		mconfig.write(fo)
 		fo.close()
 		self.Destroy()
@@ -150,15 +160,17 @@ class MainWindow(wx.Frame):
 		menubar = wx.MenuBar()
 		fileMenu = wx.Menu()
 		loadvw_itm = fileMenu.Append(wx.ID_ANY, "List previous")
-		clrdb_itm = fileMenu.Append(wx.ID_ANY, "Clear database")
-		fileMenu.AppendSeparator()
 		setting_itm = fileMenu.Append(wx.ID_ANY,"Gateway setting")
+		chkbalance_itm = fileMenu.Append(wx.ID_ANY,"Check credit balance")
+		fileMenu.AppendSeparator()
 		quit_itm = fileMenu.Append(wx.ID_EXIT, 'Quit', 'Quit application')
 		menubar.Append(fileMenu, "&Function")
 
 		helpMenu = wx.Menu()
 		hlp_itm = helpMenu.Append(wx.ID_ANY,"Worksheet template")
 		abt_itm = helpMenu.Append(wx.ID_ANY,"About")
+		helpMenu.AppendSeparator()
+		clrdb_itm = helpMenu.Append(wx.ID_ANY, "Clear database")
 		menubar.Append(helpMenu,"&Help")
 
 		self.Bind(wx.EVT_MENU, self.OnQuit, quit_itm)
@@ -167,6 +179,7 @@ class MainWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.ListRecords, loadvw_itm)
 		self.Bind(wx.EVT_MENU, self.ClearDatabase, clrdb_itm)
 		self.Bind(wx.EVT_MENU, self.Mn_GatewaySetting, setting_itm)
+		self.Bind(wx.EVT_MENU, self.CheckCreditBalance, chkbalance_itm)
 		self.SetMenuBar(menubar)
 
 		#self.list_ctrl = wx.ListCtrl(panel, size=(-1,300), style=wx.LC_REPORT|wx.BORDER_SUNKEN)
@@ -226,6 +239,27 @@ class MainWindow(wx.Frame):
 		sdlg = SMSGatewaySettingDialog(None,title="something")
 		sdlg.ShowModal()
 		sdlg.Destroy()
+		self.loadConfig() # reload config.ini for changes made
+
+	def CheckCreditBalance(self,e):
+		try:
+			unm = mconfig.get(CONFIG_SECTION,"username")
+			pws = mconfig.get(CONFIG_SECTION,"password")
+			gurl = mconfig.get(CONFIG_SECTION,"url")
+			gport = int(mconfig.get(CONFIG_SECTION,"port"))
+		except Exception, e:
+			wx.MessageBox("ERR: invalid gateway configuration","ERROR", wx.OK | wx.ICON_ERROR)
+			return
+
+		#r = urlopen("http://gateway.onewaysms.com.my:10001/bulkcredit.aspx?apiusername=&apipassword=")
+		#httplib.HTTPConnection.debuglevel = 1
+		conn = httplib.HTTPConnection(gurl,gport) # hardcoded port 10001
+		chkcredit_url = "/bulkcredit.aspx?apiusername=" + unm + "&apipassword=" + pws
+		conn.request("GET",chkcredit_url)
+		response = conn.getresponse()
+		rdata = response.read()
+		#self.logbox.AppendText(str(response.status) + " " + response.reason)
+		self.logbox.AppendText("\nCredit left: " + rdata)
 
 	def UpdateListToDatabase(self,iwhat):
 		mainlist = []
@@ -302,8 +336,9 @@ class MainWindow(wx.Frame):
 			unm = mconfig.get(CONFIG_SECTION,"username")
 			pws = mconfig.get(CONFIG_SECTION,"password")
 			gurl = mconfig.get(CONFIG_SECTION,"url")
+			gport = int(mconfig.get(CONFIG_SECTION,"port"))
 		except Exception, e:
-			wx.MessageBox("ERR: gateway configuration not available","ERROR", wx.OK | wx.ICON_ERROR)
+			wx.MessageBox("ERR: invalid gateway configuration","ERROR", wx.OK | wx.ICON_ERROR)
 			return
 
 		dlg = wx.MessageDialog(None, "Going to send SMS to selected entries?", "Question", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
@@ -313,41 +348,61 @@ class MainWindow(wx.Frame):
 			kk = get_selected_items(self.list_ctrl)
 			for i in range(len(kk)): # loop selected items and send sms
 				sd = []
-				for b in range(0,8):
+				for b in range(0,9):
 					itm = self.list_ctrl.GetItem(kk[i],b)
 					ival = itm.GetText()
 					sd.append(ival)
 
 				if sd[PH_COL].strip() is not u"":
-					its = int(sd[TS_COL]) + 1
-					self.list_ctrl.SetStringItem(kk[i],TS_COL,str(its))
-					self.logbox.AppendText("Send " + sd[CS_COL] + "(" + sd[PH_COL] + ") " + sd[VO_COL] + " : " + str(its) + " count.\n")
+					conn = httplib.HTTPConnection(gurl,gport)
+					sendsms_url = "/api.aspx?apiusername=xxx" + unm + "&apipassword=" + pws + "&mobileno=" + sd[PH_COL].strip() + "&senderid=INFO&languagetype=1&message" + urllib.urlencode({"":sd[MS_COL].strip()})
+
+					conn.request("GET",sendsms_url)
+					response = conn.getresponse()
+					rdata = response.read()
+					#self.logbox.AppendText("\n" + str(response.status) + " " + response.reason)
+					#self.logbox.AppendText("\n" + rdata)
+
+					response_str = "";
+					sendok = False
+
+					if rdata == "-100":
+						response_str = "CONFIG ERROR"
+					elif rdata == "-200":
+						response_str = "SENDERID ERROR"
+					elif rdata == "-300":
+						response_str = "INVALID MOBILE"
+					elif rdata == "-400":
+						response_str = "INVALID LANGUAGE"
+					elif rdata == "-500":
+						response_str = "INVALID MSG"
+					elif rdata == "-600":
+						response_str = "INSUFFICIENT CREDIT"
+					else:
+						response_str = rdata # save the MT ID
+						sendok = True
+
+					its = 0
+					if sendok:
+						its = int(sd[TS_COL]) + 1
+						self.list_ctrl.SetStringItem(kk[i],TS_COL,str(its))
+
+					self.list_ctrl.SetStringItem(kk[i],RESP_COL,str(response_str))
+					#self.logbox.AppendText("\n" + sendsms_url)
+					self.logbox.AppendText("\nSend " + sd[CS_COL] + "(" + sd[PH_COL] + ") " + sd[VO_COL] + " : " + str(its) + " count.\n" + "Response: " + response_str)
 
 			self.UpdateListToDatabase(self.newupload) # update entries to db
 
-			'''
-			uhead = {"Content-type": "application/x-www-form-urlencoded","Accept": "text/plain"}
-			params = urllib.urlencode({"apiusername":unm, "apipassword":pws, "mobileno":"012223344", "senderid":"namey", "languagetype":"1", "message":"this is a sms"})
-			conn = httplib.HTTPConnection("gateway.onewaysms.com.au:10001")
-			conn.request("GET","",params,uhead)
-			response = conn.getresponse()
-			rdata = response.read()
-			self.logbox.AppendText(str(response.status) + " " + response.reason)
-			self.logbox.AppendText("\n" + rdata)
-			'''
-
 	def ResendSMS(self,e):
-		print "resend sms"
+		pass
 
 	def ClearWorksheet(self,e):
 		self.list_ctrl.DeleteAllItems()
 
 	def ListRecords(self,e):
-		#self.sendsms_btn.Disable()
 		# Load from sqlite the previous records
 		self.list_ctrl.DeleteAllItems()
 		self.newupload = False # list prev recs - will use update instead of insert later
-
 		con = None
 
 		try:
@@ -358,13 +413,17 @@ class MainWindow(wx.Frame):
 			drws = cur.fetchall()
 			index = 0
 
-			flds = ["voucherno","customer","phone","message","sent","resend","nosend"]
+			flds = ["voucherno","customer","phone","message","sent","resend","nosend","gwresponse"]
 
 			for d in drws:
 				self.list_ctrl.InsertStringItem(index,str(d["origid"]))
 
 				for i in range(len(flds)):
-					self.list_ctrl.SetStringItem(index,i+1,str(d[flds[i]]))
+					lks = str(d[flds[i]])
+					if d[flds[i]] == None:
+						lks = ""
+
+					self.list_ctrl.SetStringItem(index,i+1,lks)
 
 				index += 1;
 
@@ -373,8 +432,6 @@ class MainWindow(wx.Frame):
 			wx.MessageBox("ERR: Cannot read database","ERROR",wx.OK | wx.ICON_ERROR)
 
 		finally:
-			#self.btns["sendallsms"].Enabled = False
-			#self.btns["resendsms"].Enabled = True
 
 			zebra_paint(self.list_ctrl)
 			if con:

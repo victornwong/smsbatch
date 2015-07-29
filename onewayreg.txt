@@ -1,0 +1,6 @@
+apiusername	APIP5UDLR6QVI
+apipassword	APIP5UDLR6QVICGOYD
+MT URL	http://gateway.onewaysms.com.my:10001/api.aspx
+Credit Balance URL	http://gateway.onewaysms.com.my:10001/bulkcredit.aspx
+Check Transaction URL	http://gateway.onewaysms.com.my:10001/bulktrx.aspx
+
