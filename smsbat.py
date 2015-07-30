@@ -10,8 +10,7 @@ Notes:
 Uses onewaysms API Version 1.2 12/03/2013
 
 '''
-import wx,os,xlrd
-import httplib, urllib, ConfigParser
+import wx, os, xlrd, httplib, urllib, ConfigParser, time, datetime, unicodedata
 import wx.lib.mixins.listctrl as listmix
 import sqlite3 as lite
 
@@ -29,10 +28,10 @@ MS_COL = 4
 ST_COL = 5
 RS_COL = 6
 TS_COL = 7
-RESP_COL = 8
+RP_COL = 8
 
-lheader = ["REC","Voucher","Customer","Phone","Message","Sent","Resend","TS","Resp"]
-lhwidth = [70,70,180,80,180,70,70,30,50]
+lheader = ["REC","Voucher","Customer","Phone","Message","Sent","Resend","TS","Resp",""]
+lhwidth = [50,70,180,80,180,70,70,30,50,1]
 
 mconfig = ConfigParser.SafeConfigParser()
 
@@ -354,16 +353,17 @@ class MainWindow(wx.Frame):
 					sd.append(ival)
 
 				if sd[PH_COL].strip() is not u"":
-					conn = httplib.HTTPConnection(gurl,gport)
 					sendsms_url = "/api.aspx?apiusername=xxx" + unm + "&apipassword=" + pws + "&mobileno=" + sd[PH_COL].strip() + "&senderid=INFO&languagetype=1&message" + urllib.urlencode({"":sd[MS_COL].strip()})
-
-					conn.request("GET",sendsms_url)
-					response = conn.getresponse()
-					rdata = response.read()
+					#conn = httplib.HTTPConnection(gurl,gport)
+					#conn.request("GET",sendsms_url)
+					#response = conn.getresponse()
+					#rdata = response.read()
 					#self.logbox.AppendText("\n" + str(response.status) + " " + response.reason)
 					#self.logbox.AppendText("\n" + rdata)
-
-					response_str = "";
+					
+					#rdata = "29928817"
+					rdata = "-500"
+					response_str = ""
 					sendok = False
 
 					if rdata == "-100":
@@ -382,14 +382,27 @@ class MainWindow(wx.Frame):
 						response_str = rdata # save the MT ID
 						sendok = True
 
+					self.list_ctrl.SetStringItem(kk[i],RP_COL,"dddddddx")
+
 					its = 0
 					if sendok:
 						its = int(sd[TS_COL]) + 1
 						self.list_ctrl.SetStringItem(kk[i],TS_COL,str(its))
 
-					self.list_ctrl.SetStringItem(kk[i],RESP_COL,str(response_str))
+					#tmstamp = time.strftime("%Y-%m-%d %H:%M:%S")
+					tmstamp = datetime.datetime.now()
+
+					# check if already got Sent time-stamp, if yes, don't overwrite, insert to Resend column
+					tmstampcol = ST_COL
+					if sd[ST_COL].strip() != "":
+						tmstampcol = RS_COL
+
+					self.list_ctrl.SetStringItem(kk[i],tmstampcol,str(tmstamp))
+
 					#self.logbox.AppendText("\n" + sendsms_url)
 					self.logbox.AppendText("\nSend " + sd[CS_COL] + "(" + sd[PH_COL] + ") " + sd[VO_COL] + " : " + str(its) + " count.\n" + "Response: " + response_str)
+					self.list_ctrl.Refresh()
+					#conn.close()
 
 			self.UpdateListToDatabase(self.newupload) # update entries to db
 
@@ -420,8 +433,9 @@ class MainWindow(wx.Frame):
 
 				for i in range(len(flds)):
 					lks = str(d[flds[i]])
-					if d[flds[i]] == None:
-						lks = ""
+
+					#if d[flds[i]] == None:
+					#	lks = ""
 
 					self.list_ctrl.SetStringItem(index,i+1,lks)
 
