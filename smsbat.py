@@ -11,14 +11,16 @@ Uses onewaysms API Version 1.2 12/03/2013
 
 '''
 import wx, os, xlrd, httplib, urllib, ConfigParser, time, datetime, unicodedata
+import xlwt as xlw
 import wx.lib.mixins.listctrl as listmix
 import sqlite3 as lite
 
 DBNAME = "records.db"
-PROGRAM_TITLE = "SMS Batch Sender"
+PROGRAM_TITLE = "SMS Batch Sender (ONEWAYSMS)"
 PROGRAM_VERSION = "v0.1"
 CONFIG_FILENAME = "config.ini"
 CONFIG_SECTION = "onewaysms"
+EXPORT_FN = "smsrecordsexp.xls"
 
 OR_COL = 0
 VO_COL = 1
@@ -27,15 +29,13 @@ PH_COL = 3
 MS_COL = 4
 ST_COL = 5
 RS_COL = 6
-TS_COL = 7
-RP_COL = 8
+RP_COL = 7
+TS_COL = 8
 
-lheader = ["REC","Voucher","Customer","Phone","Message","Sent","Resend","TS","Resp",""]
-lhwidth = [50,70,180,80,180,70,70,30,50,1]
+lheader = ["REC","Voucher","Customer","Phone","Message","F.Sent","Resend","Resp","TS"]
+lhwidth = [50,70,180,80,180,70,70,50,30]
 
 mconfig = ConfigParser.SafeConfigParser()
-
-#gateway_username = gateway_password = ""
 
 class SMSGatewaySettingDialog(wx.Dialog):
 	def __init__(self, *args, **kw):
@@ -117,6 +117,7 @@ class MainWindow(wx.Frame):
 		self.checkDatabase()
 		self.loadConfig()
 		self.InitUI()
+		self.searchsql = ""
 
 	def checkDatabase(self):
 		''' Check database and create tables if not exist '''
@@ -158,24 +159,26 @@ class MainWindow(wx.Frame):
 		panel.SetBackgroundColour((0x25,0x43,0x6A))
 		menubar = wx.MenuBar()
 		fileMenu = wx.Menu()
-		loadvw_itm = fileMenu.Append(wx.ID_ANY, "List previous")
-		setting_itm = fileMenu.Append(wx.ID_ANY,"Gateway setting")
-		chkbalance_itm = fileMenu.Append(wx.ID_ANY,"Check credit balance")
+		loadvw_itm = fileMenu.Append(wx.ID_ANY, "List records")
+		explist_itm = fileMenu.Append(wx.ID_ANY, "Export records to MS-Excel")
+		setting_itm = fileMenu.Append(wx.ID_ANY,"SMS Gateway setting (ONEWAYSMS)")
+		chkbalance_itm = fileMenu.Append(wx.ID_ANY,"Check credit balance (ONEWAYSMS)")
 		fileMenu.AppendSeparator()
 		quit_itm = fileMenu.Append(wx.ID_EXIT, 'Quit', 'Quit application')
 		menubar.Append(fileMenu, "&Function")
 
 		helpMenu = wx.Menu()
-		hlp_itm = helpMenu.Append(wx.ID_ANY,"Worksheet template")
-		abt_itm = helpMenu.Append(wx.ID_ANY,"About")
+		hlp_itm = helpMenu.Append(wx.ID_ANY,"Application info")
+		#abt_itm = helpMenu.Append(wx.ID_ANY,"About")
 		helpMenu.AppendSeparator()
 		clrdb_itm = helpMenu.Append(wx.ID_ANY, "Clear database")
 		menubar.Append(helpMenu,"&Help")
 
 		self.Bind(wx.EVT_MENU, self.OnQuit, quit_itm)
-		self.Bind(wx.EVT_MENU, self.AboutBox, abt_itm)
+		#self.Bind(wx.EVT_MENU, self.AboutBox, abt_itm)
 		self.Bind(wx.EVT_MENU, self.TemplateHelpBox, hlp_itm)
 		self.Bind(wx.EVT_MENU, self.ListRecords, loadvw_itm)
+		self.Bind(wx.EVT_MENU, self.ExportListRecords, explist_itm)
 		self.Bind(wx.EVT_MENU, self.ClearDatabase, clrdb_itm)
 		self.Bind(wx.EVT_MENU, self.Mn_GatewaySetting, setting_itm)
 		self.Bind(wx.EVT_MENU, self.CheckCreditBalance, chkbalance_itm)
@@ -189,9 +192,9 @@ class MainWindow(wx.Frame):
 
 		#st1 = wx.StaticText(panel,label="Worksheet",style=wx.ALIGN_LEFT)
 
-		btnid = ["sendallsms","resendsms","clearworksheet","uploadworksheet","deleteentry","saveworksheet","newentry"]
-		btnlabel = ["Send SMS", "Resend SMS", "Clear worksheet", "Upload worksheet", "Delete entry","Save worksheet","New entry"]
-		btnfunc = [self.StartSendSMS, self.ResendSMS, self.ClearWorksheet, self.OnUploadworksheet, self.DeleteEntry, self.SaveWorksheet, self.NewEntry]
+		btnid = ["sendallsms","resendsms","clearworksheet","uploadworksheet","deleteentry","saveworksheet","newentry","search_b"]
+		btnlabel = ["Send SMS", "Resend SMS", "Clear worksheet", "Upload worksheet", "Delete entry","Save worksheet","New entry","Search"]
+		btnfunc = [self.StartSendSMS, self.ResendSMS, self.ClearWorksheet, self.OnUploadworksheet, self.DeleteEntry, self.SaveWorksheet, self.NewEntry, self.SearchDatabase ]
 		self.btns = {}
 
 		for i in range(len(btnid)):
@@ -218,9 +221,18 @@ class MainWindow(wx.Frame):
 		hbox2.Add(self.btns["deleteentry"],0,wx.ALL,3)
 		hbox2.Add(self.btns["clearworksheet"],0,wx.ALL,3)
 
+		hbox3 = wx.BoxSizer(wx.HORIZONTAL)
+		stx = wx.StaticText(panel,label="Voucher/Customer/Phone")
+		stx.SetForegroundColour((255,255,255))
+		hbox3.Add(stx)
+		self.searchtext = wx.TextCtrl(panel,size=(150,-1))
+		hbox3.Add(self.searchtext,2)
+		hbox3.Add(self.btns["search_b"])
+
 		#self.logbox = wx.TextCtrl(panel, size=(-1, 150), style = wx.TE_MULTILINE|wx.TE_READONLY|wx.TE_AUTO_URL)
 		self.logbox = wx.TextCtrl(panel, size=(-1, -1), style = wx.TE_MULTILINE|wx.TE_READONLY|wx.TE_AUTO_URL)
 
+		vbox.Add(hbox3,0,wx.ALL|wx.EXPAND,2)
 		vbox.Add(hbox,0,wx.ALL|wx.EXPAND,2)
 		vbox.Add(self.list_ctrl,0,wx.ALL|wx.EXPAND,2)
 		vbox.Add(hbox2,0,wx.ALL|wx.EXPAND,2)
@@ -233,6 +245,11 @@ class MainWindow(wx.Frame):
 		self.SetTitle(PROGRAM_TITLE + " " + PROGRAM_VERSION)
 		self.Centre()
 		self.Show(True)
+
+	def SearchDatabase(self,e):
+		kk = self.searchtext.GetValue().strip()
+		self.searchsql = " where voucherno like '%" + kk + "%' or customer like '%" + kk + "%' or message like '%" + kk + "%' or phone like '%" + kk + "%'"
+		self.ListRecords(self)
 
 	def Mn_GatewaySetting(self,e):
 		sdlg = SMSGatewaySettingDialog(None,title="something")
@@ -276,9 +293,9 @@ class MainWindow(wx.Frame):
 
 		for ki in mainlist:
 			if ki[0] == "0": # if rec no. is 0, do new insert into db
-				sqlstm += "insert into smsr (origid,voucherno,customer,phone,message,sent,resend,nosend) values (NULL,'" + ki[1] + "','" + ki[2] + "','" + ki[3] + "','" + ki[4] + "','" + ki[5] + "','" + ki[6] + "',0);"
+				sqlstm += "insert into smsr (origid,voucherno,customer,phone,message,sent,resend,gwresponse,nosend) values (NULL,'" + ki[1] + "','" + ki[2] + "','" + ki[3] + "','" + ki[4] + "','" + ki[5] + "','" + ki[6] + "','" + ki[7] + "',0);"
 			else: # just update by rec no.
-				sqlstm += "update smsr set voucherno='" + ki[1] + "', customer='" + ki[2] + "', phone='" + ki[3] + "', message='" + ki[4] + "', sent='" + ki[5] + "', resend='" + ki[6] + "',nosend=" + ki[7] + " where origid=" + ki[0] + ";"
+				sqlstm += "update smsr set voucherno='" + ki[1] + "', customer='" + ki[2] + "', phone='" + ki[3] + "', message='" + ki[4] + "', sent='" + ki[5] + "', resend='" + ki[6] + "',gwresponse='" + ki[7] + "', nosend=" + ki[8] + " where origid=" + ki[0] + ";"
 
 		sqlstm += "end;"
 		dbExecuter(sqlstm)
@@ -353,16 +370,16 @@ class MainWindow(wx.Frame):
 					sd.append(ival)
 
 				if sd[PH_COL].strip() is not u"":
-					sendsms_url = "/api.aspx?apiusername=xxx" + unm + "&apipassword=" + pws + "&mobileno=" + sd[PH_COL].strip() + "&senderid=INFO&languagetype=1&message" + urllib.urlencode({"":sd[MS_COL].strip()})
-					#conn = httplib.HTTPConnection(gurl,gport)
-					#conn.request("GET",sendsms_url)
-					#response = conn.getresponse()
-					#rdata = response.read()
+					sendsms_url = "/api.aspx?apiusername=" + unm + "&apipassword=" + pws + "&mobileno=" + sd[PH_COL].strip() + "&senderid=INFO&languagetype=1&message" + urllib.urlencode({"":sd[MS_COL].strip()})
+					conn = httplib.HTTPConnection(gurl,gport)
+					conn.request("GET",sendsms_url)
+					response = conn.getresponse()
+					rdata = response.read()
 					#self.logbox.AppendText("\n" + str(response.status) + " " + response.reason)
 					#self.logbox.AppendText("\n" + rdata)
 					
 					#rdata = "29928817"
-					rdata = "-500"
+					#rdata = "-600"
 					response_str = ""
 					sendok = False
 
@@ -382,11 +399,12 @@ class MainWindow(wx.Frame):
 						response_str = rdata # save the MT ID
 						sendok = True
 
-					self.list_ctrl.SetStringItem(kk[i],RP_COL,"dddddddx")
-
 					its = 0
 					if sendok:
-						its = int(sd[TS_COL]) + 1
+						its = 1
+						if sd[TS_COL].strip() is not u"":
+							its = int(sd[TS_COL]) + 1
+
 						self.list_ctrl.SetStringItem(kk[i],TS_COL,str(its))
 
 					#tmstamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -398,11 +416,12 @@ class MainWindow(wx.Frame):
 						tmstampcol = RS_COL
 
 					self.list_ctrl.SetStringItem(kk[i],tmstampcol,str(tmstamp))
+					self.list_ctrl.SetStringItem(kk[i],RP_COL,response_str)
 
 					#self.logbox.AppendText("\n" + sendsms_url)
 					self.logbox.AppendText("\nSend " + sd[CS_COL] + "(" + sd[PH_COL] + ") " + sd[VO_COL] + " : " + str(its) + " count.\n" + "Response: " + response_str)
 					self.list_ctrl.Refresh()
-					#conn.close()
+					conn.close()
 
 			self.UpdateListToDatabase(self.newupload) # update entries to db
 
@@ -422,11 +441,11 @@ class MainWindow(wx.Frame):
 			con = lite.connect(DBNAME)
 			con.row_factory = lite.Row
 			cur = con.cursor()
-			cur.execute("select * from smsr;")
+			cur.execute("select * from smsr " + self.searchsql + ";")
 			drws = cur.fetchall()
 			index = 0
 
-			flds = ["voucherno","customer","phone","message","sent","resend","nosend","gwresponse"]
+			flds = ["voucherno","customer","phone","message","sent","resend","gwresponse","nosend"]
 
 			for d in drws:
 				self.list_ctrl.InsertStringItem(index,str(d["origid"]))
@@ -434,8 +453,8 @@ class MainWindow(wx.Frame):
 				for i in range(len(flds)):
 					lks = str(d[flds[i]])
 
-					#if d[flds[i]] == None:
-					#	lks = ""
+					if d[flds[i]] == None:
+						lks = str("")
 
 					self.list_ctrl.SetStringItem(index,i+1,lks)
 
@@ -450,6 +469,39 @@ class MainWindow(wx.Frame):
 			zebra_paint(self.list_ctrl)
 			if con:
 				con.close()
+
+	def ExportListRecords(self,e):
+		''' Export list into EXCEL '''
+		count = self.list_ctrl.GetItemCount()
+		if count == 0:
+			wx.MessageBox("No records to export..")
+			return
+
+		mainlist = []
+		for row in range(count):
+			wop = []
+			for col in range(0,len(lheader)+1):
+				itm = self.list_ctrl.GetItem(row,col)
+				ival = itm.GetText()
+				wop.append(ival)
+
+			mainlist.append(wop)
+
+		owb = xlw.Workbook(encoding='utf-8')
+		sht1 = owb.add_sheet("SMSRECORDS")
+		rowc = 1
+
+		for i in range(len(lheader)): # output the header - lheader
+			sht1.write(0,i,lheader[i])
+
+		for ki in mainlist: # loop through to insert rows into worksheet
+			for j in range(len(lheader)):
+				sht1.write(rowc,j,ki[j])
+
+			rowc = rowc + 1
+
+		owb.save(EXPORT_FN)
+		wx.MessageBox("Records exported to \"" + EXPORT_FN + "\"","Works",wx.OK | wx.ICON_INFORMATION)
 
 	def OnUploadworksheet(self,e):
 		#ku = UploadWorksheetDialog(None,title="") ku.ShowModal() ku.Destroy()
@@ -474,7 +526,7 @@ class MainWindow(wx.Frame):
 				wks = wkb.sheet_by_name(wkn)
 				nrows = wks.nrows - 1
 				ncells = wks.ncols - 1
-				curr_row = 0 # start from row 2, row 1 are the headers
+				curr_row = 0 # start from row 2, row 1 is the headers
 				while curr_row < nrows:
 					curr_row += 1
 					row = wks.row(curr_row)
@@ -486,9 +538,13 @@ class MainWindow(wx.Frame):
 
 						if curr_cell == 0:
 							self.list_ctrl.InsertStringItem(index,"0") # rec no. always 0 for uploaded worksheet - to be used in UpdateListToDatabase for insert
-							self.list_ctrl.SetStringItem(index,2,str(cellval))
+							self.list_ctrl.SetStringItem(index,1,str(cellval))
 						else:
-							self.list_ctrl.SetStringItem(index,curr_cell+2,str(cellval))
+							self.list_ctrl.SetStringItem(index,curr_cell+1,str(cellval))
+
+					# fill-up the other list-ctrl cells
+					for i in range(4):
+						self.list_ctrl.SetStringItem(index,5+i,str(""))
 
 					index += 1;
 
@@ -500,14 +556,38 @@ class MainWindow(wx.Frame):
 
 	def TemplateHelpBox(self,e):
 		wx.MessageBox(
-			'''
-Worksheet template must be in MS-Excel XP/2003 (xls) format ONLY.
-			'''
+'''
+This version uses ONEWAYSMS as the SMS gateway. Please set the valid user-name, password and URL.
+
+Record-list header explanation:
+
+REC      = internal database record number
+Voucher  = your tracking voucher
+Customer = your customer name
+Phone    = customer phone to SMS
+Message  = SMS message, limit 160 characters per SMS
+F.Sent   = first sent SMS time-stamp
+Resend   = resend SMS time-stamp
+Resp     = response from SMS gateway
+TS       = times sent, times you've SMS
+
+Import worksheet must be in MS-Excel XP/2003 (xls) format ONLY. You can use "uploadtemplate.xls"
+for guidance. Columns definition as below:
+
+Column A = Voucher  = your tracking voucher
+Column B = Customer = your customer name
+Column C = Phone    = customer phone to SMS
+Column D = Message  = SMS message, limit 160 characters per SMS
+
+Written by Victor Wong
+Tel: +60 14 9254621
+Email: wongvictor2000@yahoo.com
+'''
 			,
-			"Worksheet template info",wx.OK | wx.ICON_INFORMATION)
+			"Application Info",wx.OK | wx.ICON_INFORMATION)
 
 	def AboutBox(self,e):
-		wx.MessageBox(PROGRAM_TITLE + " " + PROGRAM_VERSION + "\nWritten by Victor Wong\nSince 03/07/2015",
+		wx.MessageBox(PROGRAM_TITLE + " " + PROGRAM_VERSION + "\nWritten by Victor Wong\n(Tel: +60 14 9254621)\nSince 03/07/2015",
 			"About",wx.OK | wx.ICON_INFORMATION)
 
 	def OnQuit(self, e):
