@@ -371,6 +371,8 @@ class MainWindow(wx.Frame):
 
 				if sd[PH_COL].strip() is not u"":
 					sendsms_url = "/api.aspx?apiusername=" + unm + "&apipassword=" + pws + "&mobileno=" + sd[PH_COL].strip() + "&senderid=INFO&languagetype=1&message" + urllib.urlencode({"":sd[MS_COL].strip()})
+					#print sendsms_url
+
 					conn = httplib.HTTPConnection(gurl,gport)
 					conn.request("GET",sendsms_url)
 					response = conn.getresponse()
